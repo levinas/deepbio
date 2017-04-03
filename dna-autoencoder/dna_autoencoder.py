@@ -37,20 +37,54 @@ class CharacterTable(object):
         return ''.join(self.indices_char[x] for x in X)
 
 
-def load_data(maxlen=30):
+def load_data(maxlen=30, val_split=0.2):
     chars = 'atgc '
     ctable = CharacterTable(chars, maxlen)
 
     fname = '511145.12.PATRIC.ffn'
-    seqs = SeqIO.parse(open(fname), 'fasta')
-    # for record in seqs:
-    #         name, seq = fasta.id, fasta.seq.tostring()
-    #         new_sequence = some_function(sequence)
-    #         write_fasta(out_file)
+    fasta = SeqIO.parse(open(fname), 'fasta')
+    seqs = [str(x.seq)[:maxlen].lower() for x in fasta]
+    np.random.shuffle(seqs)
+
+    X = np.zeros((len(seqs), maxlen, len(chars)), dtype=np.byte)
+    for i, seq in enumerate(seqs):
+        X[i] = ctable.encode(seq)
+
+    train_size = int(len(seqs) * (1 - val_split))
+    x_train = X[:train_size]
+    x_val = X[train_size:]
+
+    return (x_train, x_val), (x_train, x_val)
+
 
 
 def main():
-    load_data()
+    RNN = recurrent.LSTM
+
+    MAXLEN = 30
+    LAYERS = 1
+    HIDDEN_SIZE = 128
+    BATCH_SIZE = 128
+
+    chars = 'atgc '
+    (x_train, x_val), (y_train, y_val) = load_data(maxlen=MAXLEN)
+
+    model = Sequential()
+    model.add(RNN(HIDDEN_SIZE, input_shape=(MAXLEN, len(chars))))
+    model.add(RepeatVector(MAXLEN))
+
+    for _ in range(LAYERS):
+        model.add(RNN(HIDDEN_SIZE, return_sequences=True))
+
+    model.add(TimeDistributed(Dense(len(chars))))
+    model.add(Activation('softmax'))
+
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
+
+    model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=10,
+              validation_data=(x_val, y_val))
 
 
 if __name__ == '__main__':
