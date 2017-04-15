@@ -62,9 +62,11 @@ def load_data(maxlen=30, val_split=0.2):
     for i, seq in enumerate(seqs):
         X[i] = ctable.encode(seq)
 
-    train_size = int(len(seqs) * (1 - val_split))
+    # train_size = int(len(seqs) * (1 - val_split))
+    train_size = int(len(seqs) * (1 - val_split) / batch_size) * batch_size
+    val_size = int(len(seqs) * val_split / batch_size) * batch_size
     x_train = X[:train_size]
-    x_val = X[train_size:]
+    x_val = X[train_size:train_size+val_size]
 
     return (x_train, x_val), (x_train, x_val)
 
