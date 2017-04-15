@@ -13,6 +13,7 @@ from keras.layers import Conv1D, Lambda, Flatten
 from keras import backend as K
 
 
+epochs = 100
 batch_size = 100
 maxlen = 60
 filters = 10
@@ -49,24 +50,27 @@ class CharacterTable(object):
         return ''.join(self.indices_char[x] for x in X)
 
 
-def load_data(maxlen=30, val_split=0.2):
+def load_data(maxlen=30, head_only=False, val_split=0.2):
     chars = 'atgc '
     ctable = CharacterTable(chars, maxlen)
 
     fname = '511145.12.PATRIC.ffn'
     fasta = SeqIO.parse(open(fname), 'fasta')
-    seqs = [str(x.seq)[:maxlen].lower() for x in fasta]
+
+    if head_only:
+        seqs = [str(s.seq)[:maxlen].lower() for s in fasta]
+    else:
+        seqs = [str(s.seq)[i:i+10].lower() for s in fasta for i in range(0, len(str(s.seq)), maxlen)]
+
     np.random.shuffle(seqs)
 
     X = np.zeros((len(seqs), maxlen, len(chars)), dtype=np.byte)
     for i, seq in enumerate(seqs):
         X[i] = ctable.encode(seq)
 
-    # train_size = int(len(seqs) * (1 - val_split))
-    train_size = int(len(seqs) * (1 - val_split) / batch_size) * batch_size
-    val_size = int(len(seqs) * val_split / batch_size) * batch_size
+    train_size = int(len(seqs) * (1 - val_split))
     x_train = X[:train_size]
-    x_val = X[train_size:train_size+val_size]
+    x_val = X[train_size:]
 
     return (x_train, x_val), (x_train, x_val)
 
@@ -107,7 +111,7 @@ def main():
                   optimizer='adam',
                   metrics=['accuracy'])
 
-    vae.fit(x_train, y_train, batch_size=batch_size, epochs=10,
+    vae.fit(x_train, y_train, batch_size=batch_size, epochs=epochs,
               validation_data=(x_val, y_val))
 
 

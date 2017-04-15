@@ -37,13 +37,18 @@ class CharacterTable(object):
         return ''.join(self.indices_char[x] for x in X)
 
 
-def load_data(maxlen=30, val_split=0.2):
+def load_data(maxlen=30, head_only=False, val_split=0.2):
     chars = 'atgc '
     ctable = CharacterTable(chars, maxlen)
 
     fname = '511145.12.PATRIC.ffn'
     fasta = SeqIO.parse(open(fname), 'fasta')
-    seqs = [str(x.seq)[:maxlen].lower() for x in fasta]
+
+    if head_only:
+        seqs = [str(s.seq)[:maxlen].lower() for s in fasta]
+    else:
+        seqs = [str(s.seq)[i:i+10].lower() for s in fasta for i in range(0, len(str(s.seq)), maxlen)]
+
     np.random.shuffle(seqs)
 
     X = np.zeros((len(seqs), maxlen, len(chars)), dtype=np.byte)
@@ -57,14 +62,14 @@ def load_data(maxlen=30, val_split=0.2):
     return (x_train, x_val), (x_train, x_val)
 
 
-
 def main():
     RNN = recurrent.LSTM
 
-    MAXLEN = 30
+    MAXLEN = 60
     LAYERS = 1
     HIDDEN_SIZE = 128
     BATCH_SIZE = 128
+    EPOCHS = 500
 
     chars = 'atgc '
     (x_train, x_val), (y_train, y_val) = load_data(maxlen=MAXLEN)
@@ -80,10 +85,10 @@ def main():
     model.add(Activation('softmax'))
 
     model.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
+                  optimizer='rmsprop',
                   metrics=['accuracy'])
 
-    model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=10,
+    model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=EPOCHS,
               validation_data=(x_val, y_val))
 
 
