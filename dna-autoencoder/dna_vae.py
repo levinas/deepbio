@@ -15,8 +15,8 @@ from keras import backend as K
 
 epochs = 100
 batch_size = 100
-maxlen = 60
-filters = 10
+maxlen = 300
+filters = 100
 intermediate_dim = 500
 latent_dim = 100
 epsilon_std = 1.0
@@ -86,7 +86,7 @@ def sampling(args):
 
 def main():
 
-    (x_train, x_val), (y_train, y_val) = load_data(maxlen=maxlen)
+    (x_train, x_val), (y_train, y_val) = load_data(maxlen=maxlen, head_only=True)
 
     x = Input(batch_shape=(batch_size, maxlen, len(chars)))
     h = Conv1D(filters, kernel_size=3, activation='relu')(x)
