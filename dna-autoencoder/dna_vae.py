@@ -84,6 +84,12 @@ def sampling(args):
     return z_mean + K.exp(z_log_var) * epsilon
 
 
+def vae_loss(x, x_decoded_mean):
+    xent_loss = original_dim * metrics.binary_crossentropy(x, x_decoded_mean)
+    kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
+    return xent_loss + kl_loss
+
+
 def main():
 
     (x_train, x_val), (y_train, y_val) = load_data(maxlen=maxlen, head_only=True)
@@ -109,9 +115,9 @@ def main():
     vae = Model(x, h)
     vae.summary()
 
-    vae.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
-                  metrics=['accuracy'])
+    vae.compile(loss=vae_loss,
+                optimizer='adam',
+                metrics=['accuracy'])
 
     vae.fit(x_train, y_train, batch_size=batch_size, epochs=epochs,
               validation_data=(x_val, y_val))
