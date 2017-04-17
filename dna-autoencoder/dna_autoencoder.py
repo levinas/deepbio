@@ -10,7 +10,6 @@ from keras.models import Sequential
 from keras.layers import Activation, TimeDistributed, Dense, RepeatVector, recurrent
 
 
-
 class CharacterTable(object):
     '''
     Given a set of characters:
