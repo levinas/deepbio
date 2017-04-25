@@ -11,11 +11,11 @@ from keras.layers import Input, Activation, Dense
 from keras.layers import TimeDistributed, RepeatVector, LSTM, recurrent
 from keras.layers import Conv1D, Lambda, Flatten
 from keras import backend as K
+from keras import metrics
 
-
-epochs = 100
+epochs = 250
 batch_size = 100
-maxlen = 300
+maxlen = 30
 filters = 100
 intermediate_dim = 500
 latent_dim = 100
@@ -50,7 +50,7 @@ class CharacterTable(object):
         return ''.join(self.indices_char[x] for x in X)
 
 
-def load_data(maxlen=30, head_only=False, val_split=0.2):
+def load_data(maxlen=30, val_split=0.2, head_only=False, step=30):
     chars = 'atgc '
     ctable = CharacterTable(chars, maxlen)
 
@@ -60,7 +60,7 @@ def load_data(maxlen=30, head_only=False, val_split=0.2):
     if head_only:
         seqs = [str(s.seq)[:maxlen].lower() for s in fasta]
     else:
-        seqs = [str(s.seq)[i:i+10].lower() for s in fasta for i in range(0, len(str(s.seq)), maxlen)]
+        seqs = [str(s.seq)[i:i+maxlen].lower() for s in fasta for i in range(0, len(str(s.seq)), step)]
 
     np.random.shuffle(seqs)
 
@@ -84,23 +84,27 @@ def sampling(args):
     return z_mean + K.exp(z_log_var) * epsilon
 
 
+input_dim = len(chars)
+x = Input(batch_shape=(batch_size, maxlen, input_dim))
+# h = Dense(intermediate_dim, activation='relu')(x)
+
+h = Conv1D(filters, kernel_size=3, activation='relu')(x)
+h = Flatten()(h)
+h = Dense(intermediate_dim, activation='relu')(h)
+
+z_mean = Dense(latent_dim)(h)
+z_log_var = Dense(latent_dim)(h)
+
+
 def vae_loss(x, x_decoded_mean):
-    xent_loss = original_dim * metrics.binary_crossentropy(x, x_decoded_mean)
+    xent_loss = input_dim * metrics.binary_crossentropy(x, x_decoded_mean)
     kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
     return xent_loss + kl_loss
 
 
 def main():
 
-    (x_train, x_val), (y_train, y_val) = load_data(maxlen=maxlen, head_only=True)
-
-    x = Input(batch_shape=(batch_size, maxlen, len(chars)))
-    h = Conv1D(filters, kernel_size=3, activation='relu')(x)
-    h = Flatten()(h)
-    h = Dense(intermediate_dim, activation='relu')(h)
-
-    z_mean = Dense(latent_dim)(h)
-    z_log_var = Dense(latent_dim)(h)
+    (x_train, x_val), (y_train, y_val) = load_data(maxlen=maxlen)
 
     z = Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
 
@@ -119,8 +123,26 @@ def main():
                 optimizer='adam',
                 metrics=['accuracy'])
 
-    vae.fit(x_train, y_train, batch_size=batch_size, epochs=epochs,
-              validation_data=(x_val, y_val))
+    # vae.fit(x_train, y_train, batch_size=batch_size, epochs=epochs,
+    #         validation_data=(x_val, y_val))
+
+    ctable = CharacterTable(chars, maxlen)
+    for iteration in range(1, epochs):
+        print('-' * 50)
+        print('Iteration', iteration)
+        vae.fit(x_train, y_train, batch_size=batch_size, epochs=1,
+                validation_data=(x_val, y_val))
+        for i in range(5):
+            ind = np.random.randint(0, len(x_val))
+            rowx, rowy = x_val[np.array([ind])], y_val[np.array([ind])]
+            preds = vae.predict_classes(rowx, verbose=0)
+            q = ctable.decode(rowx[0])
+            correct = ctable.decode(rowy[0])
+            guess = ctable.decode(preds[0], calc_argmax=False)
+            # print('Q', q)
+            print('T', correct)
+            print(colors.ok + '☑' + colors.close if correct == guess else colors.fail + '☒' + colors.close, guess)
+
 
 
 if __name__ == '__main__':

@@ -36,7 +36,7 @@ class CharacterTable(object):
         return ''.join(self.indices_char[x] for x in X)
 
 
-def load_data(maxlen=30, head_only=False, val_split=0.2):
+def load_data(maxlen=30, val_split=0.2, head_only=False, step=30):
     chars = 'atgc '
     ctable = CharacterTable(chars, maxlen)
 
@@ -46,7 +46,7 @@ def load_data(maxlen=30, head_only=False, val_split=0.2):
     if head_only:
         seqs = [str(s.seq)[:maxlen].lower() for s in fasta]
     else:
-        seqs = [str(s.seq)[i:i+10].lower() for s in fasta for i in range(0, len(str(s.seq)), maxlen)]
+        seqs = [str(s.seq)[i:i+maxlen].lower() for s in fasta for i in range(0, len(str(s.seq)), step)]
 
     np.random.shuffle(seqs)
 
@@ -61,17 +61,23 @@ def load_data(maxlen=30, head_only=False, val_split=0.2):
     return (x_train, x_val), (x_train, x_val)
 
 
+class colors:
+    ok = '\033[92m'
+    fail = '\033[91m'
+    close = '\033[0m'
+
+
 def main():
     RNN = recurrent.LSTM
 
-    MAXLEN = 60
+    MAXLEN = 100
     LAYERS = 1
     HIDDEN_SIZE = 128
     BATCH_SIZE = 128
     EPOCHS = 500
 
     chars = 'atgc '
-    (x_train, x_val), (y_train, y_val) = load_data(maxlen=MAXLEN)
+    (x_train, x_val), (y_train, y_val) = load_data(maxlen=MAXLEN, step=100)
 
     model = Sequential()
     model.add(RNN(HIDDEN_SIZE, input_shape=(MAXLEN, len(chars))))
@@ -87,8 +93,25 @@ def main():
                   optimizer='rmsprop',
                   metrics=['accuracy'])
 
-    model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=EPOCHS,
-              validation_data=(x_val, y_val))
+    # model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=EPOCHS,
+    #           validation_data=(x_val, y_val))
+
+
+    ctable = CharacterTable(chars, MAXLEN)
+    for iteration in range(1, EPOCHS):
+        print('-' * 50)
+        print('Iteration', iteration)
+        model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=1,
+                  validation_data=(x_val, y_val))
+        for i in range(5):
+            ind = np.random.randint(0, len(x_val))
+            rowx, rowy = x_val[np.array([ind])], y_val[np.array([ind])]
+            preds = model.predict_classes(rowx, verbose=0)
+            q = ctable.decode(rowx[0])
+            correct = ctable.decode(rowy[0])
+            guess = ctable.decode(preds[0], calc_argmax=False)
+            print('T', correct)
+            print(colors.ok + '☑' + colors.close if correct == guess else colors.fail + '☒' + colors.close, guess)
 
 
 if __name__ == '__main__':
