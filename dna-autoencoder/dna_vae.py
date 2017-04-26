@@ -13,7 +13,7 @@ from keras.layers import Conv1D, Lambda, Flatten
 from keras import backend as K
 from keras import metrics
 
-epochs = 250
+epochs = 2000
 batch_size = 100
 maxlen = 30
 filters = 100

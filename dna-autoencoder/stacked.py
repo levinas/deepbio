@@ -76,7 +76,7 @@ def load_data(maxlen=30, step=30, val_split=0.2, flatten=False, head_only=False)
     if head_only:
         seqs = [str(s.seq)[:maxlen].lower() for s in fasta]
     else:
-        seqs = [str(s.seq)[i:i+maxlen].lower() for s in fasta for i in range(0, len(str(s.seq)), step)]
+        seqs = [str(s.seq)[i:i+maxlen].lower() for s in fasta for i in range(0, len(str(s.seq))-maxlen+1, step)]
 
     np.random.shuffle(seqs)
 
@@ -237,8 +237,8 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    # train_simple_ae(args)
-    train_vae(args)
+    train_simple_ae(args)
+    # train_vae(args)
 
 
 if __name__ == '__main__':
