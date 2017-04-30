@@ -162,7 +162,7 @@ def train(model, x_train, x_val, args):
         for i in range(args.display_samples):
             ind = np.random.randint(0, len(x_val))
             rowx, rowy = x_val[np.array([ind])], y_val[np.array([ind])]
-            preds = predict_classes(model, rowx, verbose=0)
+            preds = predict_classes(model, rowx, batch_size=1, verbose=0)
             # q = ctable.decode(rowx[0])
             correct = ctable.decode(rowy[0])
             guess = ctable.decode(preds[0], calc_argmax=False)
@@ -200,23 +200,16 @@ def train_vae(args):
     hidden_dim = args.hidden_dim
     latent_dim = args.latent_dim
 
-    # x = Input(shape=(args.maxlen, CHARLEN))
-    x = Input(batch_shape=(args.batch_size, args.maxlen, CHARLEN))
+    x = Input(shape=(args.maxlen, CHARLEN))
     h = LSTM(hidden_dim)(x)
     z_mean = Dense(latent_dim)(h)
     z_log_var = Dense(latent_dim)(h)
-    print('z_mean', z_mean.shape)
-    print('z_log_var', z_log_var.shape)
 
     encoder = Model(x, z_mean)
 
     def vae_loss(x, x_decoded_mean):
-        xent_loss = metrics.binary_crossentropy(x, x_decoded_mean)
+        xent_loss = metrics.binary_crossentropy(K.flatten(x), K.flatten(x_decoded_mean))
         kl_loss = - 0.5 * K.mean(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-        # kl_loss = 0
-        print(xent_loss)
-        print('z_mean', z_mean.shape)
-        print('z_log_var', z_log_var.shape)
         return xent_loss + kl_loss
 
     def sampling(params):
