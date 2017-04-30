@@ -176,6 +176,7 @@ def train_simple_ae(args):
     model.add(TimeDistributed(Dense(CHARLEN)))
     model.add(Activation('softmax'))
 
+    model.summary()
     model.compile(loss='categorical_crossentropy',
                   optimizer=args.optimizer,
                   metrics=['accuracy'])

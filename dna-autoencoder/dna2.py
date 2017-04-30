@@ -211,8 +211,9 @@ def train_vae(args):
     encoder = Model(x, z_mean)
 
     def vae_loss(x, x_decoded_mean):
-        xent_loss = metrics.binary_crossentropy(K.flatten(x), K.flatten(x_decoded_mean))
+        xent_loss = metrics.categorical_crossentropy(x, x_decoded_mean)
         kl_loss = - 0.5 * K.mean(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
+        # return xent_loss
         return xent_loss + kl_loss
 
     def sampling(params):
