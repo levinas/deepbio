@@ -136,6 +136,9 @@ def get_parser():
     parser.add_argument("--latent_dim", type=int,
                         default=LATENT_DIM,
                         help="number of neurons in bottleneck layer")
+    parser.add_argument("--eps", type=float,
+                        default=EPSILON_STD,
+                        help="epsilon std")
     parser.add_argument("--display_samples", type=int,
                         default=DISPLAY_SAMPLES,
                         help="number of validation samples to display")
