@@ -5,10 +5,12 @@ from __future__ import print_function
 import argparse
 import os
 import logging
+import functools
 
 import numpy as np
 import pandas as pd
 
+from sklearn.model_selection import train_test_split
 from keras.models import Sequential
 from keras.layers import Activation, TimeDistributed, Dense, RepeatVector, recurrent
 from keras.layers import Input, Lambda, Layer, LSTM, Conv1D, GlobalMaxPooling1D, Flatten
@@ -27,6 +29,7 @@ CHARLEN = len(CHARS)
 
 # MAXLEN = 3000
 MAXLEN = 60 * 60
+# MAXLEN = 36 * 36
 
 ACTIVATION = 'relu'
 OPTIMIZER = 'sgd'
@@ -36,6 +39,10 @@ DENSE_SIZE = 1024
 LAYERS = 1
 CLASSES = 100
 DROPOUT = 0.5
+
+SEED = 2017
+
+DATA = '1K'
 
 
 class CharacterTable(object):
@@ -99,27 +106,28 @@ def get_parser():
     parser.add_argument("--maxlen", type=int,
                         default=MAXLEN,
                         help="DNA chunk length")
+    parser.add_argument("--data",
+                        default=DATA,
+                        help="data")
 
     return parser
 
 
-def load_data(maxlen=1000, val_split=0.2, batch_size=128):
+def load_data_100(maxlen=1000, val_split=0.2, batch_size=128):
     ctable = CharacterTable(CHARS, maxlen)
 
     df = pd.read_csv('ref.100ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome':str})
     df_ref = pd.read_csv('ref.patric_ids', header=None, dtype=str)
-    # ref_ids = df_ref[0].tolist()
 
     mask = df['genome'].isin(df_ref[0].sample(100))
-    # df_train = df[mask]
-    # df_val = df[~mask]
 
     n = df.shape[0]
     x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
     for i, seq in enumerate(df['feature.na_sequence']):
-        x[i] = ctable.encode(seq[:1000])
+        x[i] = ctable.encode(seq[:maxlen])
 
     y = pd.get_dummies(df.iloc[:, 0]).as_matrix()
+    classes = df.iloc[:, 0].nunique()
 
     x_train = x[mask]
     x_val = x[~mask]
@@ -127,12 +135,33 @@ def load_data(maxlen=1000, val_split=0.2, batch_size=128):
     y_train = y[mask]
     y_val = y[~mask]
 
-    return (x_train, y_train), (x_val, y_val)
+    return (x_train, y_train), (x_val, y_val), classes
+
+
+def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128):
+    ctable = CharacterTable(CHARS, maxlen)
+
+    df = pd.read_csv('rep.1000ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome':str})
+    # df = pd.read_csv('rep.1000ec.pgf.seqs.filter', nrows=10000, sep='\t', engine='c', dtype={'genome':str})
+
+    n = df.shape[0]
+    x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
+    for i, seq in enumerate(df['feature.na_sequence']):
+        x[i] = ctable.encode(seq[:maxlen].lower())
+
+    y = pd.get_dummies(df.iloc[:, 0]).as_matrix()
+    classes = df.iloc[:, 0].nunique()
+
+    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.2,
+                                                      random_state=SEED,
+                                                      stratify=df.iloc[:, 0])
+    return (x_train, y_train), (x_val, y_val), classes
 
 
 def extension_from_parameters(args):
     """Construct string for saving model with annotation of parameters"""
     ext = ''
+    ext += '.DATA={}'.format(args.data)
     ext += '.A={}'.format(args.activation)
     ext += '.B={}'.format(args.batch_size)
     ext += '.D={}'.format(args.dropout)
@@ -156,71 +185,80 @@ class LoggingCallback(Callback):
         self.print_fn(msg)
 
 
-def simple_model():
+def simple_model(classes=100):
     model = Sequential(name='simple')
     model.add(Conv1D(200, 3, padding='valid', activation='relu', strides=1, input_shape=(MAXLEN, CHARLEN)))
     # model.add(Flatten())
     model.add(GlobalMaxPooling1D())
     model.add(Dense(1000, activation='relu'))
-    model.add(Dense(100))
+    model.add(Dense(classes))
     model.add(Activation('softmax'))
     return model
 
 
-def get_model(name, args):
+def get_model(name, classes, args):
     name = name.lower()
     if name == 'vgg' or name == 'vgg16':
         from vgg16_nt import VGG16NT
         model = VGG16NT(input_shape=(args.maxlen, CHARLEN),
                         dense_size=args.dense_size,
                         dropout=args.dropout,
-                        classes=CLASSES)
+                        classes=classes)
     elif name == 'res' or name == 'res50':
         from res50_nt import RES50NT
         model = RES50NT(input_shape=(args.maxlen, CHARLEN),
                         dense_size=args.dense_size,
                         dropout=args.dropout,
-                        classes=CLASSES)
+                        classes=classes)
     elif name == 'inception' or name == 'inception3':
         from inception_nt import InceptionV3NT
         model = InceptionV3NT(input_shape=(args.maxlen, CHARLEN),
-                              classes=CLASSES)
+                              classes=classes)
     else:
-        model = simple_model()
+        model = simple_model(classes)
 
     return model
 
 
-def main():
-    parser = get_parser()
-    args = parser.parse_args()
-
-    # model = get_model('vgg', args)
-    model = get_model('res', args)
-    # model = get_model('inception', args)
-
-    ext = extension_from_parameters(args)
-    prefix = args.save + '.' + model.name + ext
-    logfile = args.logfile if args.logfile else prefix + '.log'
-
+def set_up_logger(logfile, verbose):
     fh = logging.FileHandler(logfile)
     fh.setFormatter(logging.Formatter("[%(asctime)s %(process)d] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
     fh.setLevel(logging.DEBUG)
 
     sh = logging.StreamHandler()
     sh.setFormatter(logging.Formatter(''))
-    sh.setLevel(logging.DEBUG if args.verbose else logging.INFO)
+    sh.setLevel(logging.DEBUG if verbose else logging.INFO)
 
     logger.setLevel(logging.DEBUG)
     logger.addHandler(fh)
     logger.addHandler(sh)
 
-    (x_train, y_train), (x_val, y_val) = load_data(maxlen=args.maxlen)
 
+def main():
+    parser = get_parser()
+    args = parser.parse_args()
+
+    if args.data == '100':
+        (x_train, y_train), (x_val, y_val), classes = load_data_100(maxlen=args.maxlen)
+    else:
+        (x_train, y_train), (x_val, y_val), classes = load_data_1K(maxlen=args.maxlen)
+
+    # model = get_model('vgg', classes, args)
+    model = get_model('res', classes, args)
+    # model = get_model('inception', classes, args)
     model.summary()
+
+    ext = extension_from_parameters(args)
+    prefix = args.save + '.' + model.name + ext
+    logfile = args.logfile if args.logfile else prefix + '.log'
+    set_up_logger(logfile, args.verbose)
+
+    top5_acc = functools.partial(metrics.top_k_categorical_accuracy, k=5)
+    top5_acc.__name__ = 'top5_acc'
+
     model.compile(loss='categorical_crossentropy',
                   optimizer=args.optimizer,
-                  metrics=['accuracy', 'top_k_categorical_accuracy'])
+                  metrics=['accuracy', top5_acc])
 
     model.fit(x_train, y_train,
               batch_size=args.batch_size,
