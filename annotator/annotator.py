@@ -29,8 +29,8 @@ CHARLEN = len(CHARS)
 MAXLEN = 60 * 60
 
 ACTIVATION = 'relu'
-OPTIMIZER = 'adam'
-EPOCHS = 10000
+OPTIMIZER = 'sgd'
+EPOCHS = 1000
 BATCH_SIZE = 128
 DENSE_SIZE = 1024
 LAYERS = 1
@@ -175,13 +175,13 @@ def get_model(name, args):
                         dense_size=args.dense_size,
                         dropout=args.dropout,
                         classes=CLASSES)
-    if name == 'res' or name == 'res50':
+    elif name == 'res' or name == 'res50':
         from res50_nt import RES50NT
         model = RES50NT(input_shape=(args.maxlen, CHARLEN),
                         dense_size=args.dense_size,
                         dropout=args.dropout,
                         classes=CLASSES)
-    if name == 'inception' or name == 'inception3':
+    elif name == 'inception' or name == 'inception3':
         from inception_nt import InceptionV3NT
         model = InceptionV3NT(input_shape=(args.maxlen, CHARLEN),
                               classes=CLASSES)
@@ -220,14 +220,14 @@ def main():
     model.summary()
     model.compile(loss='categorical_crossentropy',
                   optimizer=args.optimizer,
-                  metrics=['accuracy'])
+                  metrics=['accuracy', 'top_k_categorical_accuracy'])
 
     model.fit(x_train, y_train,
               batch_size=args.batch_size,
               epochs=args.epochs,
               validation_data=(x_val, y_val),
               callbacks=[ModelCheckpoint(prefix + '.h5', save_best_only=True),
-                         ReduceLROnPlateau(factor=0.2, min_lr = 0.00001),
+                         ReduceLROnPlateau(factor=0.2, min_lr=0.00001),
                          LoggingCallback(logger.debug)])
 
 
