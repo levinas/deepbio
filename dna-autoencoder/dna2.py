@@ -98,7 +98,7 @@ def load_data(maxlen=30, step=30, val_split=0.2, batch_size=128, flatten=False, 
 
 
 def get_parser():
-    parser = argparse.ArgumentParser(prog='p1b3_baseline',
+    parser = argparse.ArgumentParser(prog='dna2.py',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="increase output verbosity")
