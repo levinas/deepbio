@@ -151,6 +151,6 @@ def RES50NT(include_top=True, weights='',
     else:
         inputs = seq_input
     # Create model.
-    model = Model(inputs, x, name='resnet50')
+    model = Model(inputs, x, name='res50_nt')
 
     return model

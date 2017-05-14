@@ -26,7 +26,7 @@ CHARS = ' atgc'
 CHARLEN = len(CHARS)
 
 # MAXLEN = 3000
-MAXLEN = 3600
+MAXLEN = 60 * 60
 
 ACTIVATION = 'relu'
 OPTIMIZER = 'adam'
@@ -181,6 +181,10 @@ def get_model(name, args):
                         dense_size=args.dense_size,
                         dropout=args.dropout,
                         classes=CLASSES)
+    if name == 'inception' or name == 'inception3':
+        from inception_nt import InceptionV3NT
+        model = InceptionV3NT(input_shape=(args.maxlen, CHARLEN),
+                              classes=CLASSES)
     else:
         model = simple_model()
 
@@ -193,6 +197,7 @@ def main():
 
     # model = get_model('vgg', args)
     model = get_model('res', args)
+    # model = get_model('inception', args)
 
     ext = extension_from_parameters(args)
     prefix = args.save + '.' + model.name + ext

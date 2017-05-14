@@ -75,6 +75,6 @@ def VGG16NT(include_top=True, weights='',
     else:
         inputs = seq_input
     # Create model.
-    model = Model(inputs, x, name='vgg16nt')
+    model = Model(inputs, x, name='vgg16_nt')
 
     return model
