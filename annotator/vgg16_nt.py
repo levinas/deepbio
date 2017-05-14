@@ -8,13 +8,15 @@ from keras.layers import Conv1D
 from keras.layers import MaxPooling1D
 from keras.layers import GlobalMaxPooling1D
 from keras.layers import GlobalAveragePooling1D
+from keras.layers import Dropout
 from keras.engine.topology import get_source_inputs
 from keras import backend as K
 
 
 def VGG16NT(include_top=True, weights='',
             input_tensor=None, input_shape=None,
-            pooling=None, classes=1000, dense_size=4096):
+            pooling=None, classes=1000,
+            dense_size=4096, dropout=0):
 
     if input_tensor is None:
         seq_input = Input(shape=input_shape)
@@ -56,7 +58,9 @@ def VGG16NT(include_top=True, weights='',
         # Classification block
         x = Flatten(name='flatten')(x)
         x = Dense(dense_size, activation='relu', name='fc1')(x)
+        x = Dropout(dropout, name='drop1')(x)
         x = Dense(dense_size, activation='relu', name='fc2')(x)
+        x = Dropout(dropout, name='drop2')(x)
         x = Dense(classes, activation='softmax', name='predictions')(x)
     else:
         if pooling == 'avg':

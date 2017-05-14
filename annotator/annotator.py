@@ -15,7 +15,7 @@ from keras.layers import Input, Lambda, Layer, LSTM, Conv1D, GlobalMaxPooling1D,
 from keras.models import Model
 from keras import backend as K
 from keras import metrics
-from keras.callbacks import Callback, ModelCheckpoint, ProgbarLogger
+from keras.callbacks import Callback, ModelCheckpoint, ReduceLROnPlateau
 
 
 logger = logging.getLogger(__name__)
@@ -30,11 +30,12 @@ MAXLEN = 3600
 
 ACTIVATION = 'relu'
 OPTIMIZER = 'adam'
-EPOCHS = 1000
+EPOCHS = 10000
 BATCH_SIZE = 128
 DENSE_SIZE = 1024
 LAYERS = 1
 CLASSES = 100
+DROPOUT = 0.5
 
 
 class CharacterTable(object):
@@ -83,6 +84,9 @@ def get_parser():
     parser.add_argument("--dense_size", type=int,
                         default=DENSE_SIZE,
                         help="number of neurons in intermediate dense layers")
+    parser.add_argument("--dropout", type=float,
+                        default=DROPOUT,
+                        help="dropout ratio")
     parser.add_argument("--layers", type=int,
                         default=LAYERS,
                         help="number of RNN layers to use")
@@ -131,7 +135,7 @@ def extension_from_parameters(args):
     ext = ''
     ext += '.A={}'.format(args.activation)
     ext += '.B={}'.format(args.batch_size)
-    # ext += '.D={}'.format(args.drop)
+    ext += '.D={}'.format(args.dropout)
     ext += '.E={}'.format(args.epochs)
     ext += '.O={}'.format(args.optimizer)
     ext += '.DS={}'.format(args.dense_size)
@@ -153,7 +157,7 @@ class LoggingCallback(Callback):
 
 
 def simple_model():
-    model = Sequential()
+    model = Sequential(name='simple')
     model.add(Conv1D(200, 3, padding='valid', activation='relu', strides=1, input_shape=(MAXLEN, CHARLEN)))
     # model.add(Flatten())
     model.add(GlobalMaxPooling1D())
@@ -167,22 +171,31 @@ def get_model(name, args):
     name = name.lower()
     if name == 'vgg' or name == 'vgg16':
         from vgg16_nt import VGG16NT
-        model = VGG16NT(input_shape=(args.maxlen, CHARLEN), dense_size=args.dense_size, classes=CLASSES)
-        name = 'vgg16'
+        model = VGG16NT(input_shape=(args.maxlen, CHARLEN),
+                        dense_size=args.dense_size,
+                        dropout=args.dropout,
+                        classes=CLASSES)
+    if name == 'res' or name == 'res50':
+        from res50_nt import RES50NT
+        model = RES50NT(input_shape=(args.maxlen, CHARLEN),
+                        dense_size=args.dense_size,
+                        dropout=args.dropout,
+                        classes=CLASSES)
     else:
         model = simple_model()
-        name = 'simple'
-    return model, name
+
+    return model
 
 
 def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    model, model_name = get_model('vgg', args)
+    # model = get_model('vgg', args)
+    model = get_model('res', args)
 
     ext = extension_from_parameters(args)
-    prefix = args.save + '.' + model_name + ext
+    prefix = args.save + '.' + model.name + ext
     logfile = args.logfile if args.logfile else prefix + '.log'
 
     fh = logging.FileHandler(logfile)
@@ -204,14 +217,13 @@ def main():
                   optimizer=args.optimizer,
                   metrics=['accuracy'])
 
-    checkpointer = ModelCheckpoint(prefix + '.h5', save_best_only=True)
-
     model.fit(x_train, y_train,
               batch_size=args.batch_size,
               epochs=args.epochs,
               validation_data=(x_val, y_val),
-              callbacks=[checkpointer,
-                         LoggingCallback(logging.debug)])
+              callbacks=[ModelCheckpoint(prefix + '.h5', save_best_only=True),
+                         ReduceLROnPlateau(factor=0.2, min_lr = 0.00001),
+                         LoggingCallback(logger.debug)])
 
 
 if __name__ == '__main__':
