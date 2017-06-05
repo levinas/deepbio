@@ -119,8 +119,6 @@ def load_data_100(maxlen=1000, val_split=0.2, batch_size=128):
     df = pd.read_csv('ref.100ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome':str})
     df_ref = pd.read_csv('ref.patric_ids', header=None, dtype=str)
 
-    mask = df['genome'].isin(df_ref[0].sample(100))
-
     n = df.shape[0]
     x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
     for i, seq in enumerate(df['feature.na_sequence']):
@@ -129,11 +127,15 @@ def load_data_100(maxlen=1000, val_split=0.2, batch_size=128):
     y = pd.get_dummies(df.iloc[:, 0]).as_matrix()
     classes = df.iloc[:, 0].nunique()
 
-    x_train = x[mask]
-    x_val = x[~mask]
+    # mask = df['genome'].isin(df_ref[0].sample(100))
+    # x_train = x[mask]
+    # y_train = y[mask]
+    # x_val = x[~mask]
+    # y_val = y[~mask]
 
-    y_train = y[mask]
-    y_val = y[~mask]
+    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.2,
+                                                      random_state=SEED,
+                                                      stratify=df.iloc[:, 0])
 
     return (x_train, y_train), (x_val, y_val), classes
 
