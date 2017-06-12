@@ -163,7 +163,7 @@ def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128):
 def load_data_coreseed(maxlen=1000, val_split=0.2, batch_size=128):
     ctable = CharacterTable(CHARS, maxlen)
 
-    df = pd.read_csv('coreseed.train.tsv', sep='\t', engine='c', nrows=10000, usecols=['function_index', 'dna'])
+    df = pd.read_csv('coreseed.train.tsv', sep='\t', engine='c', usecols=['function_index', 'dna'])
 
     n = df.shape[0]
     x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
