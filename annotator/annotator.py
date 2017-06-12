@@ -21,7 +21,7 @@ from keras.callbacks import Callback, ModelCheckpoint, ReduceLROnPlateau
 
 
 logger = logging.getLogger(__name__)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 CHARS = ' atgc'
@@ -160,6 +160,25 @@ def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128):
     return (x_train, y_train), (x_val, y_val), classes
 
 
+def load_data_coreseed(maxlen=1000, val_split=0.2, batch_size=128):
+    ctable = CharacterTable(CHARS, maxlen)
+
+    df = pd.read_csv('coreseed.train.tsv', sep='\t', engine='c', nrows=10000, usecols=['function_index', 'dna'])
+
+    n = df.shape[0]
+    x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
+    for i, seq in enumerate(df['dna']):
+        x[i] = ctable.encode(seq[:maxlen].lower())
+
+    y = pd.get_dummies(df.iloc[:, 0]).as_matrix()
+    classes = df.iloc[:, 0].nunique()
+
+    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.2,
+                                                      random_state=SEED,
+                                                      stratify=df.iloc[:, 0])
+    return (x_train, y_train), (x_val, y_val), classes
+
+
 def extension_from_parameters(args):
     """Construct string for saving model with annotation of parameters"""
     ext = ''
@@ -240,7 +259,9 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    if args.data == '100':
+    if args.data == 'core':
+        (x_train, y_train), (x_val, y_val), classes = load_data_coreseed(maxlen=args.maxlen)
+    elif args.data == '100':
         (x_train, y_train), (x_val, y_val), classes = load_data_100(maxlen=args.maxlen)
     else:
         (x_train, y_train), (x_val, y_val), classes = load_data_1K(maxlen=args.maxlen)
