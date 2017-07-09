@@ -3,25 +3,21 @@
 from __future__ import print_function
 
 import argparse
-import os
-import logging
 import functools
+import logging
+import os
 
 import numpy as np
 import pandas as pd
-
-from sklearn.model_selection import train_test_split
+import keras
+from keras.callbacks import Callback, ModelCheckpoint, ReduceLROnPlateau, TensorBoard
+from keras.layers import Activation, Conv1D, Dense, GlobalMaxPooling1D
 from keras.models import Sequential
-from keras.layers import Activation, TimeDistributed, Dense, RepeatVector, recurrent
-from keras.layers import Input, Lambda, Layer, LSTM, Conv1D, GlobalMaxPooling1D, Flatten
-from keras.models import Model
-from keras import backend as K
-from keras import metrics
-from keras.callbacks import Callback, ModelCheckpoint, ReduceLROnPlateau
+from sklearn.model_selection import train_test_split
 
 
 logger = logging.getLogger(__name__)
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 CHARS = ' atgc'
@@ -33,16 +29,18 @@ MAXLEN = 60 * 60
 
 ACTIVATION = 'relu'
 OPTIMIZER = 'sgd'
-EPOCHS = 1000
-BATCH_SIZE = 128
-DENSE_SIZE = 1024
+EPOCHS = 100
+BATCH_SIZE = 100
+DENSE_LAYERS = [0]
 LAYERS = 1
 CLASSES = 100
 DROPOUT = 0.5
-
+LEARNING_RATE = 0.001
 SEED = 2017
-
 DATA = '1K'
+MODEL = 'res'
+MODEL_VARIATION = 'v1'
+SAVE = 'save/save'
 
 
 class CharacterTable(object):
@@ -58,75 +56,109 @@ class CharacterTable(object):
         self.indices_char = dict((i, c) for i, c in enumerate(self.chars))
         self.maxlen = maxlen
 
-    def encode(self, C, maxlen=None):
+    def encode(self, C, maxlen=None, snake2d=False):
         maxlen = maxlen if maxlen else self.maxlen
         X = np.zeros((maxlen, len(self.chars)))
         for i, c in enumerate(C):
             X[i, self.char_indices[c]] = 1
+        if snake2d:
+            a = int(np.sqrt(maxlen))
+            X2 = np.zeros((a, a, len(self.chars)))
+            for i in range(a):
+                for j in range(a):
+                    k = i * a
+                    k += a - j - 1 if i % 2 else j
+                    X2[i, j] = X[k]
+            X = X2
         return X
 
-    def decode(self, X, calc_argmax=True):
-        if calc_argmax:
-            X = X.argmax(axis=-1)
-        return ''.join(self.indices_char[x] for x in X)
+    def decode(self, X, snake2d=False):
+        X = X.argmax(axis=-1)
+        if snake2d:
+            a = X.shape[0]
+            X2 = np.zeros(a * a)
+            for i in range(a):
+                for j in range(a):
+                    k = i * a
+                    k += a - j - 1 if i % 2 else j
+                    X2[k] = X[i, j]
+            X = X2
+        C = ''.join(self.indices_char[x] for x in X)
+        return C
 
 
 def get_parser():
-    parser = argparse.ArgumentParser(prog='dna2.py',
+    parser = argparse.ArgumentParser(prog='annotator',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="increase output verbosity")
-    parser.add_argument("-a", "--activation",
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='increase output verbosity')
+    parser.add_argument('-a', '--activation',
                         default=ACTIVATION,
-                        help="keras activation function to use in inner layers: relu, tanh, sigmoid...")
-    parser.add_argument("-e", "--epochs", type=int,
+                        help='keras activation function to use in inner layers: relu, tanh, sigmoid...')
+    parser.add_argument('-e', '--epochs', type=int,
                         default=EPOCHS,
-                        help="number of training epochs")
+                        help='number of training epochs')
     parser.add_argument('-l', '--log', dest='logfile',
                         default=None,
-                        help="log file")
-    parser.add_argument("-z", "--batch_size", type=int,
+                        help='log file')
+    parser.add_argument('-z', '--batch_size', type=int,
                         default=BATCH_SIZE,
-                        help="batch size")
-    parser.add_argument("--dense_size", type=int,
-                        default=DENSE_SIZE,
-                        help="number of neurons in intermediate dense layers")
-    parser.add_argument("--dropout", type=float,
+                        help='batch size')
+    parser.add_argument('-d', '--dense_layers', nargs='+', type=int,
+                        default=DENSE_LAYERS,
+                        help='number of neurons in intermediate dense layers')
+    parser.add_argument('--dropout', type=float,
                         default=DROPOUT,
-                        help="dropout ratio")
-    parser.add_argument("--layers", type=int,
+                        help='dropout ratio')
+    parser.add_argument('--layers', type=int,
                         default=LAYERS,
-                        help="number of RNN layers to use")
-    parser.add_argument("--optimizer",
+                        help='number of RNN layers to use')
+    parser.add_argument('--lr', dest='learning_rate', type=float,
+                        default=LEARNING_RATE,
+                        help='learning rate')
+    parser.add_argument('-m', '--model',
+                        default=MODEL,
+                        help='DNN model to use: res, res2d, ...')
+    parser.add_argument('--mv', dest='model_variation',
+                        default=MODEL_VARIATION,
+                        help='Model variation')
+    parser.add_argument('--optimizer',
                         default=OPTIMIZER,
-                        help="keras optimizer to use: sgd, rmsprop, ...")
-    parser.add_argument("--save",
-                        default='save',
-                        help="prefix of output files")
-    parser.add_argument("--maxlen", type=int,
+                        help='keras optimizer to use: sgd, rmsprop, ...')
+    parser.add_argument('--save',
+                        default=SAVE,
+                        help='prefix of output files')
+    parser.add_argument('--tb', action='store_true',
+                        help='use tensorboard')
+    parser.add_argument('--maxlen', type=int,
                         default=MAXLEN,
-                        help="DNA chunk length")
-    parser.add_argument("--data",
+                        help='DNA chunk length')
+    parser.add_argument('--data',
                         default=DATA,
-                        help="data")
+                        help='data')
 
     return parser
 
 
-def load_data_100(maxlen=1000, val_split=0.2, batch_size=128):
+def load_data_100(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False):
     ctable = CharacterTable(CHARS, maxlen)
 
-    df = pd.read_csv('ref.100ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome':str})
-    df_ref = pd.read_csv('ref.patric_ids', header=None, dtype=str)
+    df = pd.read_csv('ref.100ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome': str})
 
     n = df.shape[0]
-    x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
-    for i, seq in enumerate(df['feature.na_sequence']):
-        x[i] = ctable.encode(seq[:maxlen])
+    if snake2d:
+        a = int(np.sqrt(maxlen))
+        x = np.zeros((n, a, a, CHARLEN), dtype=np.byte)
+    else:
+        x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
 
-    y = pd.get_dummies(df.iloc[:, 0]).as_matrix()
+    for i, seq in enumerate(df['feature.na_sequence']):
+        x[i] = ctable.encode(seq[:maxlen], snake2d=snake2d)
+
+    y = pd.get_dummies(df.iloc[:, 0]).values
     classes = df.iloc[:, 0].nunique()
 
+    # df_ref = pd.read_csv('ref.patric_ids', header=None, dtype=str)
     # mask = df['genome'].isin(df_ref[0].sample(100))
     # x_train = x[mask]
     # y_train = y[mask]
@@ -140,18 +172,23 @@ def load_data_100(maxlen=1000, val_split=0.2, batch_size=128):
     return (x_train, y_train), (x_val, y_val), classes
 
 
-def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128):
+def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False):
     ctable = CharacterTable(CHARS, maxlen)
 
-    df = pd.read_csv('rep.1000ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome':str})
+    df = pd.read_csv('rep.1000ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome': str})
     # df = pd.read_csv('rep.1000ec.pgf.seqs.filter', nrows=10000, sep='\t', engine='c', dtype={'genome':str})
 
     n = df.shape[0]
-    x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
-    for i, seq in enumerate(df['feature.na_sequence']):
-        x[i] = ctable.encode(seq[:maxlen].lower())
+    if snake2d:
+        a = int(np.sqrt(maxlen))
+        x = np.zeros((n, a, a, CHARLEN), dtype=np.byte)
+    else:
+        x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
 
-    y = pd.get_dummies(df.iloc[:, 0]).as_matrix()
+    for i, seq in enumerate(df['feature.na_sequence']):
+        x[i] = ctable.encode(seq[:maxlen].lower(), snake2d=snake2d)
+
+    y = pd.get_dummies(df.iloc[:, 0]).values
     classes = df.iloc[:, 0].nunique()
 
     x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.2,
@@ -160,17 +197,27 @@ def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128):
     return (x_train, y_train), (x_val, y_val), classes
 
 
-def load_data_coreseed(maxlen=1000, val_split=0.2, batch_size=128):
+# def reshape_snake_2d(x1d, axis=1):
+    # side = int(np.sqrt(x1d))
+
+
+def load_data_coreseed(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False):
     ctable = CharacterTable(CHARS, maxlen)
 
-    df = pd.read_csv('coreseed.train.tsv', sep='\t', engine='c', usecols=['function_index', 'dna'])
+    df = pd.read_csv('coreseed.train.tsv', sep='\t', engine='c',
+                     usecols=['function_index', 'dna'])
 
     n = df.shape[0]
-    x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
-    for i, seq in enumerate(df['dna']):
-        x[i] = ctable.encode(seq[:maxlen].lower())
+    if snake2d:
+        a = int(np.sqrt(maxlen))
+        x = np.zeros((n, a, a, CHARLEN), dtype=np.byte)
+    else:
+        x = np.zeros((n, maxlen, CHARLEN), dtype=np.byte)
 
-    y = pd.get_dummies(df.iloc[:, 0]).as_matrix()
+    for i, seq in enumerate(df['dna']):
+        x[i] = ctable.encode(seq[:maxlen].lower(), snake2d=snake2d)
+
+    y = pd.get_dummies(df.iloc[:, 0]).values
     classes = df.iloc[:, 0].nunique()
 
     x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.2,
@@ -185,11 +232,18 @@ def extension_from_parameters(args):
     ext += '.DATA={}'.format(args.data)
     ext += '.A={}'.format(args.activation)
     ext += '.B={}'.format(args.batch_size)
-    ext += '.D={}'.format(args.dropout)
     ext += '.E={}'.format(args.epochs)
+    ext += '.M={}'.format(args.model)
+    if args.model.lower().startswith('res'):
+        ext += args.model_variation
     ext += '.O={}'.format(args.optimizer)
-    ext += '.DS={}'.format(args.dense_size)
     ext += '.LEN={}'.format(args.maxlen)
+    ext += '.R={}'.format(args.learning_rate)
+    if args.dropout != DROPOUT:
+        ext += '.D={}'.format(args.dropout)
+    for i, n in enumerate(args.dense_layers):
+        if n > 0:
+            ext += '.D{}={}'.format(i+1, n)
 
     return ext
 
@@ -219,19 +273,31 @@ def simple_model(classes=100):
 
 def get_model(name, classes, args):
     name = name.lower()
-    if name == 'vgg' or name == 'vgg16':
+    if name == 'vgg':
         from vgg16_nt import VGG16NT
         model = VGG16NT(input_shape=(args.maxlen, CHARLEN),
                         dense_size=args.dense_size,
                         dropout=args.dropout,
+                        activation=args.activation,
                         classes=classes)
-    elif name == 'res' or name == 'res50':
-        from res50_nt import RES50NT
-        model = RES50NT(input_shape=(args.maxlen, CHARLEN),
-                        dense_size=args.dense_size,
+    elif name == 'res':
+        from res50_nt import Res50NT
+        model = Res50NT(input_shape=(args.maxlen, CHARLEN),
+                        dense_layers=args.dense_layers,
                         dropout=args.dropout,
+                        activation=args.activation,
+                        variation=args.model_variation,
                         classes=classes)
-    elif name == 'inception' or name == 'inception3':
+    elif name == 'res2d':
+        from res50_nt_2d import Res50NT2D
+        a = int(np.sqrt(args.maxlen))
+        model = Res50NT2D(input_shape=(a, a, CHARLEN),
+                          dense_layers=args.dense_layers,
+                          dropout=args.dropout,
+                          activation=args.activation,
+                          variation=args.model_variation,
+                          classes=classes)
+    elif name == 'inception':
         from inception_nt import InceptionV3NT
         model = InceptionV3NT(input_shape=(args.maxlen, CHARLEN),
                               classes=classes)
@@ -259,37 +325,53 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    if args.data == 'core':
-        (x_train, y_train), (x_val, y_val), classes = load_data_coreseed(maxlen=args.maxlen)
-    elif args.data == '100':
-        (x_train, y_train), (x_val, y_val), classes = load_data_100(maxlen=args.maxlen)
-    else:
-        (x_train, y_train), (x_val, y_val), classes = load_data_1K(maxlen=args.maxlen)
-
-    # model = get_model('vgg', classes, args)
-    model = get_model('res', classes, args)
-    # model = get_model('inception', classes, args)
-    model.summary()
-
     ext = extension_from_parameters(args)
-    prefix = args.save + '.' + model.name + ext
+    prefix = args.save + '.' + args.model + ext
     logfile = args.logfile if args.logfile else prefix + '.log'
     set_up_logger(logfile, args.verbose)
 
-    top5_acc = functools.partial(metrics.top_k_categorical_accuracy, k=5)
+    logger.info(args)
+
+    args.dense_layers = [x for x in args.dense_layers if x > 0]
+    snake2d = args.model.endswith('2d')
+
+    if args.data == 'core':
+        (x_train, y_train), (x_val, y_val), classes = load_data_coreseed(maxlen=args.maxlen, snake2d=snake2d)
+    elif args.data == '100':
+        (x_train, y_train), (x_val, y_val), classes = load_data_100(maxlen=args.maxlen, snake2d=snake2d)
+    else:
+        (x_train, y_train), (x_val, y_val), classes = load_data_1K(maxlen=args.maxlen, snake2d=snake2d)
+
+    print('x_train shape:', x_train.shape)
+    print('y_train shape:', y_train.shape)
+
+    checkpointer = ModelCheckpoint(prefix + '.h5', save_best_only=True, save_weights_only=True)
+    tensorboard = TensorBoard(log_dir="tb/tb{}".format(ext))
+    reduce_lr = ReduceLROnPlateau(factor=0.5, patience=5, min_lr=0.00001, verbose=1)
+    file_log = LoggingCallback(logger.debug)
+    callbacks = [checkpointer, reduce_lr, file_log]
+    if args.tb:
+        callbacks.append(tensorboard)
+
+    top5_acc = functools.partial(keras.metrics.top_k_categorical_accuracy, k=5)
     top5_acc.__name__ = 'top5_acc'
 
+    opt_config = {'class_name': args.optimizer, 'config': {'lr': args.learning_rate}}
+    optimizer = keras.optimizers.deserialize(opt_config)
+
+    model = get_model(args.model, classes, args)
+    print('Model:', model.name)
+    model.summary()
+
     model.compile(loss='categorical_crossentropy',
-                  optimizer=args.optimizer,
+                  optimizer=optimizer,
                   metrics=['accuracy', top5_acc])
 
     model.fit(x_train, y_train,
               batch_size=args.batch_size,
               epochs=args.epochs,
               validation_data=(x_val, y_val),
-              callbacks=[ModelCheckpoint(prefix + '.h5', save_best_only=True),
-                         ReduceLROnPlateau(factor=0.2, min_lr=0.00001),
-                         LoggingCallback(logger.debug)])
+              callbacks=callbacks)
 
 
 if __name__ == '__main__':
