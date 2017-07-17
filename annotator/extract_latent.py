@@ -22,7 +22,8 @@ base_model = Res50NT(input_shape=(MAXLEN, CHARLEN),
                      classes=1000)
 
 weights_fname = 'save.res.DATA=core.A=selu.B=100.E=100.M=resv1.O=sgd.LEN=3600.R=0.01.D=0.1.D1=1000.h5'
-weights_url = 'file:///home/fangfang/big/deepbio/annotator/save/' + weights_fname
+# weights_url = 'file:///home/fangfang/big/deepbio/annotator/save/' + weights_fname
+weights_url = 'http://bioseed.mcs.anl.gov/~fangfang/tmp/' + weights_fname
 weights_path = keras.utils.data_utils.get_file(weights_fname, weights_url,
                                                cache_dir='.',
                                                cache_subdir='weights')
@@ -34,9 +35,9 @@ model = keras.models.Model(inputs=base_model.input, outputs=base_model.get_layer
 #
 # (x_train, y_train), (x_val, y_val), classes = load_data_coreseed(maxlen=args.maxlen, snake2d=snake2d)
 #
-# x_val_latent = base_model.predict(x, verbose=1)
+# x_val_latent = base_model.predict(x)
 
-# Or we can load the sequences with
+# Or we can load the sequences with their functions
 df_func = pd.read_csv('func.top1000', sep='\t', names=['count', 'function'], engine='c')
 df_func['function_index'] = range(1, len(df_func) + 1)
 func_dict = df_func.set_index('function_index')['function'].to_dict()
@@ -49,7 +50,6 @@ n = df.shape[0]
 x = np.zeros((n, MAXLEN, CHARLEN), dtype=np.byte)
 for i, seq in enumerate(df['dna']):
     x[i] = ctable.encode(seq[:MAXLEN].lower())
-    # print(i, seq)
 
 y_proba = base_model.predict(x, verbose=1)
 y_conf = y_proba.max(axis=-1)
