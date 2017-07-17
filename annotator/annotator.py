@@ -35,7 +35,7 @@ DENSE_LAYERS = [0]
 LAYERS = 1
 CLASSES = 100
 DROPOUT = 0.5
-LEARNING_RATE = 0.01
+LEARNING_RATE = None
 SEED = 2017
 DATA = '1K'
 MODEL = 'res'
@@ -344,6 +344,7 @@ def main():
 
     print('x_train shape:', x_train.shape)
     print('y_train shape:', y_train.shape)
+    # np.savetxt('{}.y_val{}.txt'.format(args.save, ext), np.argmax(y_val, axis=1), fmt='%g')
 
     checkpointer = ModelCheckpoint(prefix + '.h5', save_best_only=True, save_weights_only=True)
     tensorboard = TensorBoard(log_dir="tb/tb{}".format(ext))
@@ -356,8 +357,8 @@ def main():
     top5_acc = functools.partial(keras.metrics.top_k_categorical_accuracy, k=5)
     top5_acc.__name__ = 'top5_acc'
 
-    opt_config = {'class_name': args.optimizer, 'config': {'lr': args.learning_rate}}
-    optimizer = keras.optimizers.deserialize(opt_config)
+    opt_config = {'lr': args.learning_rate} if args.learning_rate else {}
+    optimizer = keras.optimizers.deserialize({'class_name': args.optimizer, 'config': opt_config})
 
     model = get_model(args.model, classes, args)
     print('Model:', model.name)
