@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
+CHARS = ' atgc'
+CHARLEN = len(CHARS)
+
 # MAXLEN = 3000
 MAXLEN = 60 * 60
 # MAXLEN = 36 * 36

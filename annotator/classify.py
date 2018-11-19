@@ -106,7 +106,7 @@ def main():
     df_func['function_index'] = range(1, len(df_func) + 1)
     func_dict = df_func.set_index('function_index')['function'].to_dict()
 
-    df = pd.read_csv('coreseed.train.tsv', sep='\t', engine='c',
+    df = pd.read_csv('data/coreseed.train.tsv', sep='\t', engine='c',
                      usecols=['peg', 'function_index', 'dna'])
 
     ctable = CharacterTable(CHARS, maxlen)

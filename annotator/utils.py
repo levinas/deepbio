@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from sklearn.model_selection import train_test_split
+
 
 CHARS = ' atgc'
 CHARLEN = len(CHARS)
@@ -54,7 +56,7 @@ class CharacterTable(object):
 def load_data_100(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False, seed=SEED):
     ctable = CharacterTable(CHARS, maxlen)
 
-    df = pd.read_csv('ref.100ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome': str})
+    df = pd.read_csv('data/ref.100ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome': str})
 
     n = df.shape[0]
     if snake2d:
@@ -86,7 +88,7 @@ def load_data_100(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False, see
 def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False, seed=SEED):
     ctable = CharacterTable(CHARS, maxlen)
 
-    df = pd.read_csv('rep.1000ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome': str})
+    df = pd.read_csv('data/rep.1000ec.pgf.seqs.filter', sep='\t', engine='c', dtype={'genome': str})
     # df = pd.read_csv('rep.1000ec.pgf.seqs.filter', nrows=10000, sep='\t', engine='c', dtype={'genome':str})
 
     n = df.shape[0]
@@ -115,7 +117,7 @@ def load_data_1K(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False, seed
 def load_data_coreseed(maxlen=1000, val_split=0.2, batch_size=128, snake2d=False, seed=SEED):
     ctable = CharacterTable(CHARS, maxlen)
 
-    df = pd.read_csv('coreseed.train.tsv', sep='\t', engine='c',
+    df = pd.read_csv('data/coreseed.train.tsv', sep='\t', engine='c',
                      usecols=['function_index', 'dna'])
 
     n = df.shape[0]
